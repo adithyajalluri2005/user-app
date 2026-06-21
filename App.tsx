@@ -1,20 +1,37 @@
+import React, { useEffect, useRef } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import type { NavigationContainerRef } from '@react-navigation/native';
+import { AuthContext, useAuthProvider } from './src/hooks/useAuth';
+import { useNotifications } from './src/hooks/useNotifications';
+import { RootNavigator } from './src/navigation/RootNavigator';
+import { setupAndroidChannel } from './src/services/notifications';
+import type { RootParamList } from './src/navigation/types';
 
-export default function App() {
+function AppWithAuth() {
+  const auth = useAuthProvider();
+  const navigationRef = useRef<NavigationContainerRef<RootParamList> | null>(null);
+
+  // Set up Android notification channel once on mount
+  useEffect(() => {
+    setupAndroidChannel();
+  }, []);
+
+  // Wire push notifications — registers device token after login + handles taps
+  useNotifications(auth.isAuthenticated, navigationRef);
+
   return (
-    <View style={styles.container}>
-      <Text>Open up App.tsx to start working on your app!</Text>
-      <StatusBar style="auto" />
-    </View>
+    <AuthContext.Provider value={auth}>
+      <StatusBar style="dark" />
+      <RootNavigator navigationRef={navigationRef} />
+    </AuthContext.Provider>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <AppWithAuth />
+    </SafeAreaProvider>
+  );
+}
