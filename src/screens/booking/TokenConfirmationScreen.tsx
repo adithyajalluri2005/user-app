@@ -102,7 +102,7 @@ export function TokenConfirmationScreen({ navigation, route }: Props) {
               doctorId: booking.doctorId,
               sessionDate: booking.date,
               sessionType: booking.sessionType,
-              tokenNumber: String(booking.tokenNumber),
+              tokenNumber: booking.tokenNumber,
             })
           }
           activeOpacity={0.85}

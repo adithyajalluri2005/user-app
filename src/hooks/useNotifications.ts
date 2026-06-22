@@ -11,17 +11,24 @@ import type { NavigationContainerRef } from '@react-navigation/native';
 import {
   registerDeviceForPush,
   parseNotificationPayload,
+  type QueueNotificationData,
 } from '../services/notifications';
 import type { RootParamList } from '../navigation/types';
 
 type RootNav = NavigationContainerRef<RootParamList>;
 
-function navigateToQueue(nav: RootNav, bookingId: string): void {
+function navigateToQueue(nav: RootNav, params: QueueNotificationData): void {
   // Navigate: switch to BookingsTab, then push QueueTracker inside it
   nav.navigate('BookingsTab');
   // Use a short delay so the tab switch settles before pushing the nested screen
   setTimeout(() => {
-    nav.navigate('QueueTracker', { bookingId });
+    nav.navigate('QueueTracker', {
+      bookingId: params.bookingId,
+      doctorId: params.doctorId,
+      sessionDate: params.sessionDate,
+      sessionType: params.sessionType,
+      tokenNumber: params.tokenNumber,
+    });
   }, 50);
 }
 
@@ -63,7 +70,7 @@ export function useNotifications(
       const nav = navigationRef.current;
       if (!nav?.isReady()) return;
 
-      navigateToQueue(nav, payload.bookingId);
+      navigateToQueue(nav, payload);
     });
     return () => sub.remove();
   }, [navigationRef]);
@@ -78,7 +85,7 @@ export function useNotifications(
       const nav = navigationRef.current;
       if (!nav?.isReady()) return;
 
-      navigateToQueue(nav, payload.bookingId);
+      navigateToQueue(nav, payload);
     });
   }, [navigationRef]);
 }

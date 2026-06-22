@@ -10,10 +10,11 @@
  * the FCM token. On Expo Go / simulator it falls back to the Expo push token
  * (for testing with Expo's push service only).
  *
- * Notification payload shape expected from backend:
- *   { type: 'queue_update', bookingId: string, patientsAhead: number }
- *   { type: 'turn_soon',    bookingId: string }
- *   { type: 'your_turn',    bookingId: string }
+ * Notification payload shape sent by backend (NotificationsService):
+ *   data carries: type, token, bookingId, doctorId, sessionDate, sessionType
+ *   QUEUE_APPROACHING also carries patientsAhead.
+ * The session fields are required so a notification tap can open QueueTracker
+ * (which needs them to (re)join the live queue socket).
  */
 
 import * as Notifications from 'expo-notifications';
@@ -21,10 +22,19 @@ import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 import { registerDevice as apiRegisterDevice } from '../api/client';
 
+/** Session fields every queue notification carries — enough to open QueueTracker. */
+export type QueueNotificationData = {
+  bookingId: string;
+  doctorId: string;
+  sessionDate: string;
+  sessionType: 'MORNING' | 'EVENING';
+  tokenNumber: string;
+};
+
 export type NotificationPayload =
-  | { type: 'queue_update'; bookingId: string; patientsAhead: number }
-  | { type: 'turn_soon';    bookingId: string }
-  | { type: 'your_turn';   bookingId: string };
+  | ({ type: 'QUEUE_APPROACHING'; patientsAhead: number } & QueueNotificationData)
+  | ({ type: 'ARRIVAL_REMINDER' } & QueueNotificationData)
+  | ({ type: 'BOOKING_CONFIRMED' } & QueueNotificationData);
 
 // Configure how notifications appear while app is in foreground
 Notifications.setNotificationHandler({
@@ -89,31 +99,48 @@ export function parseNotificationPayload(
   const data = notification.request.content.data as Record<string, unknown>;
   if (!data?.type || typeof data.type !== 'string') return null;
 
-  if (data.type === 'queue_update') {
-    return {
-      type: 'queue_update',
-      bookingId: String(data.bookingId ?? ''),
-      patientsAhead: Number(data.patientsAhead ?? 0),
-    };
+  const base: QueueNotificationData = {
+    bookingId: String(data.bookingId ?? ''),
+    doctorId: String(data.doctorId ?? ''),
+    sessionDate: String(data.sessionDate ?? ''),
+    sessionType: String(data.sessionType) === 'EVENING' ? 'EVENING' : 'MORNING',
+    // backend sends the token under `token`; QueueTracker calls it tokenNumber
+    tokenNumber: String(data.token ?? data.tokenNumber ?? ''),
+  };
+  if (!base.bookingId || !base.doctorId) return null; // can't deep-link without these
+
+  switch (data.type) {
+    case 'QUEUE_APPROACHING':
+      return { type: 'QUEUE_APPROACHING', patientsAhead: Number(data.patientsAhead ?? 0), ...base };
+    case 'ARRIVAL_REMINDER':
+      return { type: 'ARRIVAL_REMINDER', ...base };
+    case 'BOOKING_CONFIRMED':
+      return { type: 'BOOKING_CONFIRMED', ...base };
+    default:
+      return null;
   }
-  if (data.type === 'turn_soon') {
-    return { type: 'turn_soon', bookingId: String(data.bookingId ?? '') };
-  }
-  if (data.type === 'your_turn') {
-    return { type: 'your_turn', bookingId: String(data.bookingId ?? '') };
-  }
-  return null;
 }
 
 // Dev helper — fire a local notification to test the tap flow
-export async function sendDevTestNotification(bookingId: string): Promise<void> {
+export async function sendDevTestNotification(params: QueueNotificationData): Promise<void> {
   await Notifications.scheduleNotificationAsync({
     content: {
       title: "You're almost up!",
       body: '1 patient ahead of you. Please be ready.',
-      data: { type: 'turn_soon', bookingId } satisfies NotificationPayload,
-      sound: 'default',
+      // backend sends the token under `token`; mirror that so the parser agrees
+      data: {
+        type: 'ARRIVAL_REMINDER',
+        token: params.tokenNumber,
+        bookingId: params.bookingId,
+        doctorId: params.doctorId,
+        sessionDate: params.sessionDate,
+        sessionType: params.sessionType,
+      },
     },
-    trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: 2 },
+    // null = deliver immediately. Scheduled triggers (TIME_INTERVAL / DATE) are
+    // silently dropped by expo-notifications on SDK 56 in this build
+    // ("will not trigger in the future, removing"), so immediate is the only
+    // delivery that actually fires.
+    trigger: null,
   });
 }

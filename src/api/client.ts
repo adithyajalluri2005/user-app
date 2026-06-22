@@ -102,7 +102,6 @@ function toDoctor(d: BackendDoctor): Doctor {
     id: d.id,
     name: d.name,
     specialization: d.specialization ?? '',
-    consultationFee: d.consultationFee,
     clinicId: d.clinicId,
     clinicName: d.clinic?.name ?? '',
     fee: d.consultationFee,
@@ -187,7 +186,8 @@ function toBooking(b: BackendBooking): Booking {
     date: b.sessionDate,
     session: sessionMap[b.sessionType] ?? 'morning',
     sessionType: b.sessionType,
-    tokenNumber: b.tokenNumber ? parseInt(b.tokenNumber, 10) : 0,
+    // tokens are alphanumeric on the backend (e.g. 'A002', 'W001') — never parseInt
+    tokenNumber: b.tokenNumber ?? '',
     status: statusMap[b.status] ?? 'confirmed',
     fee: 0,
     createdAt: b.createdAt,

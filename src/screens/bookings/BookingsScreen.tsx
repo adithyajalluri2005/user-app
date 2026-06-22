@@ -109,7 +109,7 @@ export function BookingsScreen({ navigation }: Props) {
                   doctorId: item.doctorId,
                   sessionDate: item.date,
                   sessionType: item.sessionType,
-                  tokenNumber: String(item.tokenNumber),
+                  tokenNumber: item.tokenNumber,
                 })
               }
               activeOpacity={0.8}

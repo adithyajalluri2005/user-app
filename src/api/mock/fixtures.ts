@@ -16,6 +16,7 @@ export const MOCK_CLINICS: Clinic[] = [
     name: 'Apollo Hospitals',
     address: '21 Greams Lane, Off Greams Road',
     city: 'Chennai',
+    contactNumber: '+914428290200',
     specializations: ['Cardiology', 'Neurology', 'Orthopedics'],
   },
   {
@@ -23,6 +24,7 @@ export const MOCK_CLINICS: Clinic[] = [
     name: 'Fortis Healthcare',
     address: '14 Cunningham Road',
     city: 'Bangalore',
+    contactNumber: '+918066214444',
     specializations: ['Oncology', 'Dermatology', 'General Medicine'],
   },
   {
@@ -30,6 +32,7 @@ export const MOCK_CLINICS: Clinic[] = [
     name: 'KIMS Hospital',
     address: '1-8-31/1 Minister Road',
     city: 'Hyderabad',
+    contactNumber: '+914044885000',
     specializations: ['Pediatrics', 'ENT', 'Ophthalmology'],
   },
 ];
@@ -82,7 +85,8 @@ export const MOCK_UPCOMING_BOOKINGS: Booking[] = [
     clinicName: 'Apollo Hospitals',
     date: '2026-06-25',
     session: 'morning',
-    tokenNumber: 14,
+    sessionType: 'MORNING',
+    tokenNumber: 'A014',
     status: 'confirmed',
     fee: 800,
     createdAt: '2026-06-21T10:00:00Z',
@@ -98,7 +102,8 @@ export const MOCK_PAST_BOOKINGS: Booking[] = [
     clinicName: 'Fortis Healthcare',
     date: '2026-06-10',
     session: 'afternoon',
-    tokenNumber: 7,
+    sessionType: 'EVENING',
+    tokenNumber: 'E007',
     status: 'completed',
     fee: 600,
     createdAt: '2026-06-09T14:00:00Z',
@@ -107,10 +112,11 @@ export const MOCK_PAST_BOOKINGS: Booking[] = [
 
 export const MOCK_QUEUE_STATE: QueueState = {
   bookingId: 'booking-1',
-  tokenNumber: 14,
-  currentToken: 9,
+  tokenNumber: '14',
+  position: 5,
   patientsAhead: 4,
   estimatedWaitMinutes: 20,
+  total: 18,
   status: 'waiting',
 };
 
@@ -209,10 +215,8 @@ export const mockCreateBooking = async (params: {
   const doctor = MOCK_DOCTORS.find((d) => d.id === params.doctorId);
   return {
     bookingId: 'booking-new-' + Date.now(),
-    razorpayOrderId: 'order_mock_' + Date.now(),
+    orderId: 'order_mock_' + Date.now(),
     amount: (doctor?.fee ?? 500) * 100, // paise
-    currency: 'INR',
-    keyId: 'rzp_test_mock',
   };
 };
 
@@ -224,20 +228,9 @@ export const mockConfirmBooking = async (params: {
 }): Promise<BookingConfirmResponse> => {
   await delay(600);
   return {
-    booking: {
-      id: params.bookingId,
-      doctorId: 'doc-1',
-      doctorName: 'Dr. Priya Ramesh',
-      clinicId: 'clinic-1',
-      clinicName: 'Apollo Hospitals',
-      date: '2026-06-25',
-      session: 'morning',
-      tokenNumber: 15,
-      status: 'confirmed',
-      fee: 800,
-      createdAt: new Date().toISOString(),
-    },
-    tokenNumber: 15,
+    bookingId: params.bookingId,
+    tokenNumber: '15',
+    alreadyProcessed: false,
   };
 };
 

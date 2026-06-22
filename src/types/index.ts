@@ -28,7 +28,7 @@ export interface Booking {
   date: string;
   session: 'morning' | 'afternoon' | 'evening';
   sessionType: 'MORNING' | 'EVENING';
-  tokenNumber: number;
+  tokenNumber: string;
   status: 'confirmed' | 'completed' | 'cancelled';
   fee: number;
   createdAt: string;

@@ -255,8 +255,8 @@ export function QueueTrackerScreen({ navigation, route }: Props) {
               style={styles.devBtn}
               onPress={() => {
                 // eslint-disable-next-line @typescript-eslint/no-require-imports
-                const { sendDevTestNotification } = require('../../services/notifications') as { sendDevTestNotification: (id: string) => void };
-                sendDevTestNotification(bookingId);
+                const { sendDevTestNotification } = require('../../services/notifications') as { sendDevTestNotification: (p: { bookingId: string; doctorId: string; sessionDate: string; sessionType: 'MORNING' | 'EVENING'; tokenNumber: string }) => void };
+                sendDevTestNotification({ bookingId, doctorId, sessionDate, sessionType, tokenNumber });
               }}
             >
               <Text style={styles.devBtnText}>Send test notification (2s)</Text>
