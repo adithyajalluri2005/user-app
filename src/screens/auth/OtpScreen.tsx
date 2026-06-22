@@ -30,7 +30,6 @@ export function OtpScreen({ phone, onBack, onVerified }: Props) {
   const { confirmOtp, requestOtp } = useAuth();
 
   useEffect(() => {
-    inputRef.current?.focus();
     const timer = setInterval(() => {
       setResendCooldown((c) => (c > 0 ? c - 1 : 0));
     }, 1000);
@@ -92,7 +91,6 @@ export function OtpScreen({ phone, onBack, onVerified }: Props) {
               const digits = t.replace(/\D/g, '').slice(0, OTP_LENGTH);
               setOtp(digits);
               if (digits.length === OTP_LENGTH) {
-                // auto-submit when all digits entered
                 setTimeout(() => {
                   if (digits.length === OTP_LENGTH) handleVerify();
                 }, 100);
@@ -100,6 +98,9 @@ export function OtpScreen({ phone, onBack, onVerified }: Props) {
             }}
             keyboardType="number-pad"
             maxLength={OTP_LENGTH}
+            autoFocus
+            caretHidden
+            showSoftInputOnFocus
             style={styles.hiddenInput}
             editable={!loading}
           />
@@ -152,7 +153,7 @@ export function OtpScreen({ phone, onBack, onVerified }: Props) {
           </View>
 
           {__DEV__ && (
-            <Text style={styles.devHint}>Dev: use OTP 123456</Text>
+            <Text style={styles.devHint}>Dev: use OTP 000000</Text>
           )}
         </View>
       </KeyboardAvoidingView>
@@ -197,9 +198,11 @@ const styles = StyleSheet.create({
   },
   hiddenInput: {
     position: 'absolute',
-    opacity: 0,
+    top: -200,
+    left: 0,
     width: 1,
     height: 1,
+    color: 'transparent',
   },
   otpRow: {
     flexDirection: 'row',
