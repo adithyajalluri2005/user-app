@@ -7,7 +7,9 @@
  * Set MOCK_PAYMENT=false and rebuild natively to use the real SDK.
  */
 
-const MOCK_PAYMENT = true; // flip to false after native build
+// Mocked by default (Expo Go can't run the native SDK). Native EAS builds set
+// EXPO_PUBLIC_MOCK_PAYMENT=false to exercise the real Razorpay checkout.
+const MOCK_PAYMENT = process.env.EXPO_PUBLIC_MOCK_PAYMENT !== 'false';
 
 export interface RazorpayOptions {
   key: string;

@@ -136,6 +136,7 @@ export const mockOtpVerify = async (
   if (otp !== '123456') throw new Error('Invalid or expired OTP');
   return {
     token: 'mock-jwt-token-' + phone,
+    refreshToken: 'mock-refresh-token-' + phone,
     patient: {
       id: 'patient-1',
       name: 'Test Patient',

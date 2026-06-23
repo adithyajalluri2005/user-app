@@ -60,6 +60,7 @@ export interface OtpSendResponse {
 
 export interface OtpVerifyResponse {
   token: string;
+  refreshToken: string;
   patient: {
     id: string;
     name: string;

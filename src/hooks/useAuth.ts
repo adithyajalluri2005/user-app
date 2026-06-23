@@ -1,8 +1,15 @@
 import { useState, useEffect, useCallback, createContext, useContext } from 'react';
 import * as SecureStore from 'expo-secure-store';
-import { sendOtp, verifyOtp } from '../api/client';
+import {
+  sendOtp,
+  verifyOtp,
+  setAuthErrorHandler,
+  storeSession,
+  revokeSession,
+} from '../api/client';
 
 const TOKEN_KEY = 'patient_jwt';
+const REFRESH_KEY = 'patient_refresh';
 const PATIENT_KEY = 'patient_info';
 
 interface Patient {
@@ -58,19 +65,30 @@ export function useAuthProvider(): AuthContextValue {
   const confirmOtp = useCallback(async (phone: string, otp: string) => {
     const result = await verifyOtp(phone, otp);
     await Promise.all([
-      SecureStore.setItemAsync(TOKEN_KEY, result.token),
+      storeSession(result.token, result.refreshToken),
       SecureStore.setItemAsync(PATIENT_KEY, JSON.stringify(result.patient)),
     ]);
     setState({ token: result.token, patient: result.patient, isLoading: false });
   }, []);
 
   const logout = useCallback(async () => {
+    await revokeSession(); // best-effort server-side revocation
     await Promise.all([
       SecureStore.deleteItemAsync(TOKEN_KEY),
+      SecureStore.deleteItemAsync(REFRESH_KEY),
       SecureStore.deleteItemAsync(PATIENT_KEY),
     ]);
     setState({ token: null, patient: null, isLoading: false });
   }, []);
+
+  // A 401 from any authed request (expired/invalid session) clears the session
+  // so the navigator drops the user back to login instead of stranding them.
+  useEffect(() => {
+    setAuthErrorHandler(() => {
+      void logout();
+    });
+    return () => setAuthErrorHandler(null);
+  }, [logout]);
 
   return {
     ...state,

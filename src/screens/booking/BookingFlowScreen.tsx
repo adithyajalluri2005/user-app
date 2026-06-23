@@ -12,8 +12,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import { useAsync } from '../../hooks/useAsync';
-import { getDoctor, createBooking, confirmBooking } from '../../api/client';
-import { openRazorpayCheckout } from '../../api/payment';
+import { getDoctor, createBooking, confirmBooking, ApiError } from '../../api/client';
+import { openRazorpayCheckout, RazorpayError } from '../../api/payment';
 import { useAuth } from '../../hooks/useAuth';
 import { ErrorState } from '../../components/ErrorState';
 import type { SearchStackParamList } from '../../navigation/types';
@@ -88,15 +88,36 @@ export function BookingFlowScreen({ navigation, route }: Props) {
     if (!doctor || !selectedDate || !selectedSession || !patient) return;
     setStep('paying');
     const sessionInfo = SESSIONS.find((s) => s.key === selectedSession)!;
+    const detail = (err: unknown, fallback: string) =>
+      err instanceof Error && err.message ? err.message : fallback;
+
+    // Stage 1 — create the booking + Razorpay order (authenticated)
+    let order;
     try {
-      const order = await createBooking({
+      order = await createBooking({
         patientId: patient.id,
         doctorId: doctor.id,
         date: formatDateISO(selectedDate),
         sessionType: sessionInfo.backendType,
       });
+    } catch (err) {
+      setStep('review');
+      if (err instanceof ApiError && err.status === 401) {
+        // Session expired — the auth handler is already logging the user out.
+        Alert.alert('Session expired', 'Please log in again to continue.');
+      } else {
+        Alert.alert(
+          'Could not start booking',
+          detail(err, 'Something went wrong starting your booking. Please try again.'),
+        );
+      }
+      return;
+    }
 
-      const payment = await openRazorpayCheckout({
+    // Stage 2 — gateway checkout (user may cancel; no charge captured on failure)
+    let payment;
+    try {
+      payment = await openRazorpayCheckout({
         key: process.env.EXPO_PUBLIC_RAZORPAY_KEY_ID ?? '',
         amount: order.amount,
         currency: 'INR',
@@ -104,20 +125,36 @@ export function BookingFlowScreen({ navigation, route }: Props) {
         name: doctor.clinicName || doctor.name,
         description: `Consultation with ${doctor.name}`,
       });
+    } catch (err) {
+      setStep('review');
+      Alert.alert(
+        'Payment not completed',
+        err instanceof RazorpayError
+          ? err.message
+          : 'Your payment was cancelled or could not be completed. You have not been charged.',
+      );
+      return;
+    }
 
+    // Stage 3 — verify the signature server-side and issue the token
+    try {
       const confirmed = await confirmBooking({
         orderId: payment.razorpay_order_id,
         paymentId: payment.razorpay_payment_id,
         signature: payment.razorpay_signature,
       });
-
       navigation.replace('TokenConfirmation', {
         bookingId: confirmed.bookingId,
       });
     } catch (err) {
       setStep('review');
-      const msg = err instanceof Error ? err.message : 'Payment failed';
-      Alert.alert('Payment failed', msg);
+      Alert.alert(
+        'Payment verification failed',
+        detail(
+          err,
+          'We could not confirm your payment. If any amount was deducted it will be auto-refunded — please contact support if unsure.',
+        ),
+      );
     }
   };
 

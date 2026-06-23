@@ -14,8 +14,30 @@ import type {
 
 const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 
+/** Error carrying the HTTP status so callers can react (e.g. 401 → logout). */
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
+/**
+ * Invoked whenever an authenticated request is rejected with 401 (expired or
+ * invalid session). The auth layer registers a handler that clears the session
+ * and returns the user to login — so a stale token can't strand the user.
+ */
+let onAuthError: (() => void) | null = null;
+export function setAuthErrorHandler(handler: (() => void) | null): void {
+  onAuthError = handler;
+}
+
+const TOKEN_KEY = 'patient_jwt';
+const REFRESH_KEY = 'patient_refresh';
+
 async function getToken(): Promise<string | null> {
-  return SecureStore.getItemAsync('patient_jwt');
+  return SecureStore.getItemAsync(TOKEN_KEY);
 }
 
 async function request<T>(
@@ -23,28 +45,97 @@ async function request<T>(
   options: RequestInit = {},
 ): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...options.headers },
     ...options,
+    headers: { 'Content-Type': 'application/json', ...options.headers },
   });
   if (!res.ok) {
     const body = await res.text();
     let msg = `${res.status}`;
     try { msg = (JSON.parse(body) as { message?: string }).message ?? msg; } catch { /* */ }
-    throw new Error(msg);
+    throw new ApiError(msg, res.status);
   }
   const text = await res.text();
   return text ? (JSON.parse(text) as T) : (undefined as unknown as T);
 }
 
-async function authedRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
+/**
+ * Persist a freshly issued access + refresh token pair. Called on login and on
+ * every silent refresh (refresh tokens rotate, so both are rewritten).
+ */
+export async function storeSession(token: string, refreshToken: string): Promise<void> {
+  await Promise.all([
+    SecureStore.setItemAsync(TOKEN_KEY, token),
+    SecureStore.setItemAsync(REFRESH_KEY, refreshToken),
+  ]);
+}
+
+/**
+ * Swap an expired access token for a new one using the refresh token. Concurrent
+ * 401s share a single in-flight refresh (dedup) so we don't rotate the refresh
+ * token multiple times in parallel. Returns the new access token, or null if the
+ * refresh token is missing/expired/revoked (→ caller logs out).
+ */
+let refreshing: Promise<string | null> | null = null;
+async function refreshAccessToken(): Promise<string | null> {
+  if (refreshing) return refreshing;
+  refreshing = (async () => {
+    const refreshToken = await SecureStore.getItemAsync(REFRESH_KEY);
+    if (!refreshToken) return null;
+    try {
+      const res = await request<{ token: string; refreshToken: string }>(
+        '/auth/patient/refresh',
+        { method: 'POST', body: JSON.stringify({ refreshToken }) },
+      );
+      await storeSession(res.token, res.refreshToken);
+      return res.token;
+    } catch {
+      return null; // refresh token rejected — session is truly over
+    }
+  })();
+  try {
+    return await refreshing;
+  } finally {
+    refreshing = null;
+  }
+}
+
+async function authedRequest<T>(
+  path: string,
+  options: RequestInit = {},
+  retried = false,
+): Promise<T> {
   const token = await getToken();
-  return request<T>(path, {
-    ...options,
-    headers: {
-      ...(options.headers as Record<string, string> | undefined),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-  });
+  try {
+    return await request<T>(path, {
+      ...options,
+      headers: {
+        ...(options.headers as Record<string, string> | undefined),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    });
+  } catch (err) {
+    // Access token expired → try one silent refresh + retry before giving up.
+    if (err instanceof ApiError && err.status === 401 && !retried) {
+      const newToken = await refreshAccessToken();
+      if (newToken) return authedRequest<T>(path, options, true);
+      onAuthError?.();
+    }
+    throw err;
+  }
+}
+
+/** Best-effort server-side revocation of the refresh token (logout). */
+export async function revokeSession(): Promise<void> {
+  const refreshToken = await SecureStore.getItemAsync(REFRESH_KEY);
+  if (!refreshToken) return;
+  try {
+    await request<void>('/auth/patient/logout', {
+      method: 'POST',
+      body: JSON.stringify({ refreshToken }),
+    });
+  } catch {
+    /* network error on logout is non-fatal; local clear still happens */
+  }
 }
 
 // ─── Auth ────────────────────────────────────────────────────────────────────
@@ -58,12 +149,18 @@ export async function sendOtp(phone: string): Promise<OtpSendResponse> {
 }
 
 export async function verifyOtp(phone: string, otp: string): Promise<OtpVerifyResponse> {
-  const result = await request<{ token: string; role: string; sub: string }>(
+  const result = await request<{
+    token: string;
+    refreshToken: string;
+    role: string;
+    sub: string;
+  }>(
     '/auth/patient/otp/verify',
     { method: 'POST', body: JSON.stringify({ mobile: phone, otp }) },
   );
   return {
     token: result.token,
+    refreshToken: result.refreshToken,
     patient: { id: result.sub, name: '', phone },
   };
 }
